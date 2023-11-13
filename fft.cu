@@ -10,6 +10,7 @@
 #include <cuda_runtime_api.h>
 #include <bits/stdc++.h>
 #include <cmath>
+#include "omp.h"
 
 using namespace std;
 
@@ -346,17 +347,6 @@ complex<double>* cudaIterFFT(double *timeSignal, unsigned long sigLength)
         cudaLaunchCooperativeKernel((void*)binEx, dimGrid, dimBlock, kernelArgs);
         // cudaDeviceSynchronize();
         // binEx<<<1, sigLength>>>(d_bitShufTimeSig, sigLength, roundIdx, tasksPerThread, d_tempHold);
-        // cudaMemcpy(bitShufTimeSig, d_bitShufTimeSig, sizeof(cuda::std::complex<double>) * sigLength, cudaMemcpyDeviceToHost);
-        // cudaMemcpy(d_bitShufTimeSig, d_tempHold, sizeof(cuda::std::complex<double>) * sigLength, cudaMemcpyDeviceToDevice);
-
-        // for (int sigIdx = 0; sigIdx < sigLength; sigIdx++)
-        // {
-        //     if (roundIdx == 2)
-        //     {
-        //         cout << bitShufTimeSig[sigIdx] << " " << endl;
-        //     }
-        // }
-        // cout << endl;
     }
     auto stop = chrono::high_resolution_clock::now();
     auto diff = chrono::duration_cast<chrono::microseconds>(stop - start);
@@ -365,6 +355,94 @@ complex<double>* cudaIterFFT(double *timeSignal, unsigned long sigLength)
 
     cudaMemcpy(bitShufTimeSig, d_bitShufTimeSig, sizeof(cuda::std::complex<double>) * sigLength, cudaMemcpyDeviceToHost);
     // cudaFree(d_bitShufTimeSig);
+
+    return bitShufTimeSig;
+
+}
+
+complex<double>* ompIterFFT(double *timeSignal, unsigned long sigLength)
+{
+    // Creates bit shuffled array
+    static complex<double>* bitShufTimeSig;
+    bitShufTimeSig = (complex<double>*) malloc(sigLength * sizeof(complex<double>));
+    for (int k = 0; k < sigLength; k++)
+    {
+        // Shuffles the order of the signal based on bit reversed indices
+        bitShufTimeSig[k] = timeSignal[bitRev(k, sigLength)];
+    }
+
+    double pi = 2*acos(0.0);
+
+    int numRounds = (int) log2(sigLength);
+
+    int numThreads = omp_get_max_threads() - 1;
+
+    cout << "numThreads: " << numThreads << endl;
+    
+    auto start = chrono::high_resolution_clock::now();
+
+    for (int roundIdx = 0; roundIdx < numRounds; roundIdx++)
+    {
+        int numSampsPerBlock = 1 << roundIdx;
+        complex<double> compFactors[numSampsPerBlock];
+        for (int factIdx = 0; factIdx < numSampsPerBlock; factIdx++)
+        {
+            // Array of complex factors for FFT
+            // Paper uses Matlab and has a -2 * pi * 1i factor but that does not work in this implementation
+            // -pi * 1i is the correct implementation when numSampsPerBlock is 2^roundIdx and roundIdx is from 0 to log2 sigLength - 1
+            compFactors[factIdx] = exp(-pi * 1i * ((double) factIdx / numSampsPerBlock));
+        }
+
+        int numBlocksPerRound = 1 << (numRounds - roundIdx - 1);
+
+        complex<double>* tempHold = (complex<double>*) malloc(sigLength * sizeof(complex<double>));
+
+        cout << roundIdx << endl;
+        #pragma omp parallel for num_threads(numThreads)
+        for (int blockIndx = 0; blockIndx < numBlocksPerRound; blockIndx++)
+        {
+            int startIdx = (blockIndx) * 2 * numSampsPerBlock;
+            int endIdx = (blockIndx + 1) * 2 * numSampsPerBlock - 1;
+            int midIdx = startIdx + (endIdx - startIdx + 1) / 2;
+
+            complex<double> top[midIdx - startIdx];
+            for (int topIdx = startIdx; topIdx < midIdx; topIdx++)
+            {
+                top[topIdx - startIdx] = bitShufTimeSig[topIdx];
+            }
+
+            complex<double> bot[endIdx - midIdx + 1];
+            for (int botIdx = midIdx; botIdx <= endIdx; botIdx++)
+            {
+                bot[botIdx - midIdx] = bitShufTimeSig[botIdx] * compFactors[botIdx - midIdx];
+            }
+
+            for (int resIdx = startIdx; resIdx <= endIdx; resIdx++)
+            {
+                // cout << resIdx << " ";
+                tempHold[resIdx] = resIdx < midIdx ? top[resIdx - startIdx] + bot[resIdx - startIdx] : top[resIdx - midIdx] - bot[resIdx - midIdx];
+            }
+            // cout << endl;
+        }
+
+        #pragma omp parallel for num_threads(numThreads)
+        for (int blockIndx = 0; blockIndx < numBlocksPerRound; blockIndx++)
+        {
+            int startIdx = (blockIndx) * 2 * numSampsPerBlock;
+            int endIdx = (blockIndx + 1) * 2 * numSampsPerBlock - 1;
+            int midIdx = startIdx + (endIdx - startIdx + 1) / 2;
+
+            for (int resIdx = startIdx; resIdx <= endIdx; resIdx++)
+            {
+                bitShufTimeSig[resIdx] = tempHold[resIdx];
+            }
+
+        }
+    }
+
+    auto stop = chrono::high_resolution_clock::now();
+    auto diff = chrono::duration_cast<chrono::microseconds>(stop - start);
+    cout << "omp algo time (us): " << diff.count() << endl;
 
     return bitShufTimeSig;
 
@@ -384,10 +462,11 @@ int main()
     // cout << endl;
 
     complex<double>* fftResPtr;
-    complex<double>* fftResPtr2;
+    complex<double>* fftResPtrCuda;
+    complex<double>* fftResPtrOmp;
 
-    unsigned long signalLength = 67108864;
-    // unsigned long signalLength = 1048576;
+    // unsigned long signalLength = 67108864;
+    unsigned long signalLength = 262144;
 
     double pi = 2*acos(0.0);
 
@@ -401,21 +480,28 @@ int main()
     }
     cout << endl;
 
-    auto start2 = chrono::high_resolution_clock::now();
-    fftResPtr2 = cudaIterFFT(timeSignal, signalLength);
-    auto stop2 = chrono::high_resolution_clock::now();
-    auto diff2 = chrono::duration_cast<chrono::microseconds>(stop2 - start2);
+    // auto startCuda = chrono::high_resolution_clock::now();
+    // fftResPtrCuda = cudaIterFFT(timeSignal, signalLength);
+    // auto stopCuda = chrono::high_resolution_clock::now();
+    // auto diffCuda = chrono::duration_cast<chrono::microseconds>(stopCuda - startCuda);
 
-    cout << "parallel total time (us): " << diff2.count() << endl;
+    // cout << "parallel total time (us): " << diffCuda.count() << endl;
 
-    auto start1 = chrono::high_resolution_clock::now();
+    auto startOmp = chrono::high_resolution_clock::now();
+    fftResPtrOmp = ompIterFFT(timeSignal, signalLength);
+    auto stopOmp = chrono::high_resolution_clock::now();
+    auto diffOmp = chrono::duration_cast<chrono::microseconds>(stopOmp - startOmp);
+
+    cout << "omp total time (us): " << diffOmp.count() << endl;
+
+    auto start = chrono::high_resolution_clock::now();
     fftResPtr = iterFFT(timeSignal, signalLength);
-    auto stop1 = chrono::high_resolution_clock::now();
-    auto diff1 = chrono::duration_cast<chrono::microseconds>(stop1 - start1);
+    auto stop = chrono::high_resolution_clock::now();
+    auto diff = chrono::duration_cast<chrono::microseconds>(stop - start);
 
-    cout << "iterative total time (us): " << diff1.count() << endl;
+    cout << "iterative total time (us): " << diff.count() << endl;
 
-    cout << abs(fftResPtr[0]) << " " << abs(fftResPtr2[0]) << endl;
+    cout << abs(fftResPtr[0]) << " " << abs(fftResPtrOmp[0]) << endl;
 
     cout << "FFT Complex" << endl;
     for (int i = 0; i < signalLength; i++)
@@ -434,33 +520,44 @@ int main()
     cout << "FFT Complex" << endl;
     for (int i = 0; i < signalLength; i++)
     {
-        // cout << fftResPtr2[i] << " ";
+        // cout << fftResPtrCuda[i] << " ";
     }
     cout << endl;
 
     cout << "FFT Mag" << endl;
     for (int i = 0; i < signalLength; i++)
     {
-        // cout << abs(fftResPtr2[i]) << " ";
+        // cout << abs(fftResPtrOmp[i]) << " ";
     }
     cout << endl;
 
-    int count = 0;
+    int countCuda = 0;
 
     double roundingFactor = 1000.0;
 
+    // for (int i = 0; i < signalLength; i++)
+    // {
+    //     if (round(abs(fftResPtr[i]) * roundingFactor) / roundingFactor != round(abs(fftResPtrCuda[i]) * roundingFactor) / roundingFactor)
+    //     {
+    //         countCuda += 1;
+    //         cout << i << " " << abs(fftResPtr[i]) << " " << abs(fftResPtrCuda[i]) << endl;
+    //     }
+    // }
+
+    // cout << countCuda << endl;
+
+    int countOmp = 0;
+
     for (int i = 0; i < signalLength; i++)
     {
-        if (round(abs(fftResPtr[i]) * roundingFactor) / roundingFactor != round(abs(fftResPtr2[i]) * roundingFactor) / roundingFactor)
+        if (round(abs(fftResPtr[i]) * roundingFactor) / roundingFactor != round(abs(fftResPtrOmp[i]) * roundingFactor) / roundingFactor)
         {
-            count += 1;
-            cout << i << " " << abs(fftResPtr[i]) << " " << abs(fftResPtr2[i]) << endl;
+            countOmp += 1;
+            cout << i << " " << abs(fftResPtr[i]) << " " << abs(fftResPtrOmp[i]) << endl;
         }
     }
 
-    cout << abs(fftResPtr2[1]) << " " << abs(fftResPtr2[signalLength - 1]) << endl;
-
-    cout << count << endl;
+    cout << countOmp << endl;
 
 
 }
