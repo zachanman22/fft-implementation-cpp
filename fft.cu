@@ -64,6 +64,9 @@ complex<double>* iterFFT(double *timeSignal, unsigned long sigLength)
     double pi = 2*acos(0.0);
 
     int numRounds = (int) log2(sigLength);
+    
+    auto start = chrono::high_resolution_clock::now();
+
     for (int roundIdx = 0; roundIdx < numRounds; roundIdx++)
     {
         int numSampsPerBlock = 1 << roundIdx;
@@ -101,6 +104,10 @@ complex<double>* iterFFT(double *timeSignal, unsigned long sigLength)
             }
         }
     }
+
+    auto stop = chrono::high_resolution_clock::now();
+    auto diff = chrono::duration_cast<chrono::microseconds>(stop - start);
+    cout << "iterative algo time (us): " << diff.count() << endl;
 
     return bitShufTimeSig;
 
@@ -152,93 +159,114 @@ unsigned int bitRev(unsigned int num, unsigned long sigLength)
     return rev;
 }
 
-__global__ void binEx(cuda::std::complex<double> *bitShufTimeSig, unsigned long sigLength, int roundIdx)
+__global__ void binEx(cuda::std::complex<double> *bitShufTimeSig, unsigned long sigLength, int roundIdx, int tasksPerThread, cuda::std::complex<double> *tempHold)
 {
     auto group = cooperative_groups::this_grid();
     auto block = cooperative_groups::this_thread_block();
 
     // printf("group %d", group.thread_rank());
 
-    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    int threadId = blockIdx.x * blockDim.x + threadIdx.x;
     // unsigned long tid = group.thread_rank();
     // printf("tid %d\n", tid);
+    // cuda::std::complex<double>* holding = (cuda::std::complex<double>*) malloc(tasksPerThread * sizeof(cuda::std::complex<double>));
 
-    printf("numThreads: %d\n", group.size());
-
-    // Whether the thread should process as a top or bot value in the FFT block
-    // Bit shift the thread ID by the roundIdx then check LSB with & 1
-    bool isBot = (tid >> (roundIdx)) & 1;
-    if (tid == sigLength - 1)
-        printf("isBot %d\n", isBot);
-
-    // printf("tid %d: is bot %d\n", tid, isBot);
-
-    // int numSampsPerBlock = (int) pow(2, roundIdx);
-    int numSampsPerBlock = 1 << roundIdx;
-    // printf("numSampsPerBlock %d\n", numSampsPerBlock);
-
-    unsigned long exchangeIdx = cudaExchangeIdx(tid, roundIdx + 1);
-    
-    cuda::std::complex<double> i(0.0, 1.0);
-
-    double pi = 2*acos(0.0);
-
-    unsigned long factorIdx = (isBot == 1) ? tid % numSampsPerBlock : exchangeIdx % numSampsPerBlock;
-
-    if (tid == sigLength - 1)
-        printf("tid %d\n", tid);
-
-    if (tid == sigLength - 1)
-        printf("factorIdx %d\n", factorIdx);
-
-    if (tid == sigLength - 1)
-        printf("numSampsPerBlock %d\n", numSampsPerBlock);
-
-    if (tid == sigLength - 1)
-        printf("factorAngle %f\n", -((double) factorIdx / numSampsPerBlock));
-    double factorAngle = -pi * ((double) factorIdx / numSampsPerBlock);
-    // cuda::std::complex<double> compFactor = exp(-pi * i * ((double) factorIdx / numSampsPerBlock));
-    cuda::std::complex<double> compFactor(cos(factorAngle), sin(factorAngle));
-
-    if (tid == sigLength - 1)
-        printf("Comp factor tid %d: %f, %f\n", tid, compFactor.real(), compFactor.imag());
-
-    // printf("Prev Shuf tid %d: %f, %f\n", tid, bitShufTimeSig[tid].real(), bitShufTimeSig[tid].imag());
-
-    // printf("tid %d: %f, %f\n", tid, (bitShufTimeSig[exchangeIdx] - compFactor * bitShufTimeSig[tid]).real(), (bitShufTimeSig[exchangeIdx] - compFactor * bitShufTimeSig[tid]).imag());
-    // printf("tid %d: %f, %f\n", tid, (bitShufTimeSig[tid] + compFactor * bitShufTimeSig[exchangeIdx]).real(), (bitShufTimeSig[tid] + compFactor * bitShufTimeSig[exchangeIdx]).imag());
-    // if (isBot)
-    // {
-    //     // printf("top val for tid %d: %f\n", tid, bitShufTimeSig[exchangeIdx].real());
-    //     // printf("tid %d: %f, %f\n", tid, (bitShufTimeSig[exchangeIdx] - compFactor * bitShufTimeSig[tid]).real(), (bitShufTimeSig[exchangeIdx] - compFactor * bitShufTimeSig[tid]).imag());
-    //     // printf("tid %d: %f, %f\n", tid, (bitShufTimeSig[tid] + compFactor * bitShufTimeSig[exchangeIdx]).real(), (bitShufTimeSig[tid] + compFactor * bitShufTimeSig[exchangeIdx]).imag());
-    //     bitShufTimeSig[tid] = bitShufTimeSig[exchangeIdx] - compFactor * bitShufTimeSig[tid];
-        
-    // }
-    // else
-    // {
-    //     // printf("top val for tid %d: %f\n", tid, bitShufTimeSig[tid].real());
-    //     // printf("tid %d: %f, %f\n", tid, (bitShufTimeSig[exchangeIdx] - compFactor * bitShufTimeSig[tid]).real(), (bitShufTimeSig[exchangeIdx] - compFactor * bitShufTimeSig[tid]).imag());
-    //     // printf("tid %d: %f, %f\n", tid, (bitShufTimeSig[tid] + compFactor * bitShufTimeSig[exchangeIdx]).real(), (bitShufTimeSig[tid] + compFactor * bitShufTimeSig[exchangeIdx]).imag());
-    //     bitShufTimeSig[tid] = bitShufTimeSig[tid] + compFactor * bitShufTimeSig[exchangeIdx];
-        
-    // }
-
-
-    cuda::std::complex<double> newVal = (isBot == 1) ? bitShufTimeSig[exchangeIdx] - compFactor * bitShufTimeSig[tid] : bitShufTimeSig[tid] + compFactor * bitShufTimeSig[exchangeIdx];
-    group.sync();
-
-    if (tid == sigLength - 1)
+    for (int tid = tasksPerThread * threadId; tid < tasksPerThread * threadId + tasksPerThread; tid++)
     {
-        printf("prev, tid %d: %f, %f\n", tid, bitShufTimeSig[tid].real(), bitShufTimeSig[tid].imag());
-        printf("exchange, tid %d: %f, %f\n", tid, bitShufTimeSig[exchangeIdx].real(), bitShufTimeSig[exchangeIdx].imag());
+        if (tid > sigLength)
+        {
+            continue;
+        }
+        // printf("numThreads: %d\n", group.size());
+        // tid = taskIdx;
+        // printf("taskIdx %d\n", taskIdx);
+
+        // Whether the thread should process as a top or bot value in the FFT block
+        // Bit shift the thread ID by the roundIdx then check LSB with & 1
+        bool isBot = (tid >> (roundIdx)) & 1;
+        // if (tid == sigLength - 1)
+        //     printf("isBot %d\n", isBot);
+
+        // printf("tid %d: is bot %d\n", tid, isBot);
+
+        // int numSampsPerBlock = (int) pow(2, roundIdx);
+        int numSampsPerBlock = 1 << roundIdx;
+        // printf("numSampsPerBlock %d\n", numSampsPerBlock);
+
+        unsigned long exchangeIdx = cudaExchangeIdx(tid, roundIdx + 1);
+        
+        cuda::std::complex<double> i(0.0, 1.0);
+
+        double pi = 2*acos(0.0);
+
+        unsigned long factorIdx = (isBot == 1) ? tid % numSampsPerBlock : exchangeIdx % numSampsPerBlock;
+
+        // if (tid == sigLength - 1)
+        //     printf("tid %d\n", tid);
+
+        // if (tid == sigLength - 1)
+        //     printf("factorIdx %d\n", factorIdx);
+
+        // if (tid == sigLength - 1)
+        //     printf("numSampsPerBlock %d\n", numSampsPerBlock);
+
+        // if (tid == sigLength - 1)
+        //     printf("factorAngle %f\n", -((double) factorIdx / numSampsPerBlock));
+        // double factorAngle = -pi * ((double) factorIdx / numSampsPerBlock);
+        cuda::std::complex<double> compFactor = exp(-pi * i * ((double) factorIdx / numSampsPerBlock));
+        // cuda::std::complex<double> compFactor(cos(factorAngle), sin(factorAngle));
+
+        // if (tid == sigLength - 1)
+        //     printf("Comp factor tid %d: %f, %f\n", tid, compFactor.real(), compFactor.imag());
+
+        // printf("Prev Shuf tid %d: %f, %f\n", tid, bitShufTimeSig[tid].real(), bitShufTimeSig[tid].imag());
+
+        // printf("tid %d: %f, %f\n", tid, (bitShufTimeSig[exchangeIdx] - compFactor * bitShufTimeSig[tid]).real(), (bitShufTimeSig[exchangeIdx] - compFactor * bitShufTimeSig[tid]).imag());
+        // printf("tid %d: %f, %f\n", tid, (bitShufTimeSig[tid] + compFactor * bitShufTimeSig[exchangeIdx]).real(), (bitShufTimeSig[tid] + compFactor * bitShufTimeSig[exchangeIdx]).imag());
+        // if (isBot)
+        // {
+        //     // printf("top val for tid %d: %f\n", tid, bitShufTimeSig[exchangeIdx].real());
+        //     // printf("tid %d: %f, %f\n", tid, (bitShufTimeSig[exchangeIdx] - compFactor * bitShufTimeSig[tid]).real(), (bitShufTimeSig[exchangeIdx] - compFactor * bitShufTimeSig[tid]).imag());
+        //     // printf("tid %d: %f, %f\n", tid, (bitShufTimeSig[tid] + compFactor * bitShufTimeSig[exchangeIdx]).real(), (bitShufTimeSig[tid] + compFactor * bitShufTimeSig[exchangeIdx]).imag());
+        //     bitShufTimeSig[tid] = bitShufTimeSig[exchangeIdx] - compFactor * bitShufTimeSig[tid];
+            
+        // }
+        // else
+        // {
+        //     // printf("top val for tid %d: %f\n", tid, bitShufTimeSig[tid].real());
+        //     // printf("tid %d: %f, %f\n", tid, (bitShufTimeSig[exchangeIdx] - compFactor * bitShufTimeSig[tid]).real(), (bitShufTimeSig[exchangeIdx] - compFactor * bitShufTimeSig[tid]).imag());
+        //     // printf("tid %d: %f, %f\n", tid, (bitShufTimeSig[tid] + compFactor * bitShufTimeSig[exchangeIdx]).real(), (bitShufTimeSig[tid] + compFactor * bitShufTimeSig[exchangeIdx]).imag());
+        //     bitShufTimeSig[tid] = bitShufTimeSig[tid] + compFactor * bitShufTimeSig[exchangeIdx];
+            
+        // }
+
+
+        cuda::std::complex<double> newVal = (isBot == 1) ? bitShufTimeSig[exchangeIdx] - compFactor * bitShufTimeSig[tid] : bitShufTimeSig[tid] + compFactor * bitShufTimeSig[exchangeIdx];
+        // group.sync();
+
+        // if (tid == sigLength - 1)
+        // {
+        //     printf("prev, tid %d: %f, %f\n", tid, bitShufTimeSig[tid].real(), bitShufTimeSig[tid].imag());
+        //     printf("exchange, tid %d: %f, %f\n", tid, bitShufTimeSig[exchangeIdx].real(), bitShufTimeSig[exchangeIdx].imag());
+        // }
+
+        // bitShufTimeSig[tid] = newVal;
+        tempHold[tid] = newVal;
+        // group.sync();
+
+        // if (tid == sigLength - 1)
+            // printf("tid %d: %f, %f\n", tid, holding[tid - tasksPerThread * threadId].real(), holding[tid - tasksPerThread * threadId].imag());
+        // group.sync();
+        
     }
 
-    bitShufTimeSig[tid] = newVal;
+    group.sync();
 
-    if (tid == sigLength - 1)
-        printf("tid %d: %f, %f\n", tid, bitShufTimeSig[tid].real(), bitShufTimeSig[tid].imag());
-    // group.sync();
+    for (int tid = tasksPerThread * threadId; tid < tasksPerThread * threadId + tasksPerThread; tid++)
+    {
+        // bitShufTimeSig[tid] = holding[tid - tasksPerThread * threadId];
+        bitShufTimeSig[tid] = tempHold[tid];
+    }
 }
 
 // Binary Exchange algorithm for parallel FFT
@@ -246,8 +274,9 @@ complex<double>* cudaIterFFT(double *timeSignal, unsigned long sigLength)
 {
     // Creates bit shuffled array
     static complex<double>* bitShufTimeSig;
-    // bitShufTimeSig = (complex<double>*) malloc(sigLength * sizeof(complex<double>));
-    cudaMallocManaged((void**) &bitShufTimeSig, sigLength * sizeof(complex<double>));
+    bitShufTimeSig = (complex<double>*) malloc(sigLength * sizeof(complex<double>));
+    // cudaMallocHost((void**) &bitShufTimeSig, sigLength * sizeof(complex<double>));
+    // cudaMallocManaged((void**) &bitShufTimeSig, sigLength * sizeof(complex<double>));
     for (int k = 0; k < sigLength; k++)
     {
         // Shuffles the order of the signal based on bit reversed indices
@@ -256,26 +285,41 @@ complex<double>* cudaIterFFT(double *timeSignal, unsigned long sigLength)
 
     int threadsPerBlock;
     int numBlocks;
+    int tasksPerThread;
     if (sigLength <= 1024)
     {
         threadsPerBlock = sigLength;
         numBlocks = 1;
+        tasksPerThread = 1;
     }
     else
     {
         threadsPerBlock = 1024;
         numBlocks = (int) ceil(sigLength / 1024.0);
+        tasksPerThread = 1;
+    }
+
+    // Can not spawn more than 64 blocks (probably more but will need to be power of 2 and could not spawn 128 blocks)
+    if (numBlocks > 64)
+    {
+        numBlocks = 64;
+        tasksPerThread = (int) ceil(sigLength / (1024.0 * 64.0));
+
     }
 
     cout << numBlocks << endl;
+    cout << tasksPerThread << endl;
 
     double pi = 2*acos(0.0);
 
     cuda::std::complex<double>* d_bitShufTimeSig;
+    cuda::std::complex<double>* d_tempHold;
 
     cudaMalloc((void**) &d_bitShufTimeSig, sizeof(cuda::std::complex<double>) * (int) sigLength);
+    cudaMalloc((void**) &d_tempHold, sizeof(cuda::std::complex<double>) * (int) sigLength);
 
     cudaMemcpy(d_bitShufTimeSig, bitShufTimeSig, sizeof(cuda::std::complex<double>) * sigLength, cudaMemcpyHostToDevice);
+    cudaMemset(d_tempHold, 0, sizeof(cuda::std::complex<double>) * sigLength);
 
     int numRounds = (int) log2(sigLength);
     // cout << "numRounds " << numRounds << endl;
@@ -285,11 +329,13 @@ complex<double>* cudaIterFFT(double *timeSignal, unsigned long sigLength)
     // cudaDeviceGetAttribute(&supportsCoopLaunch, cudaDevAttrCooperativeLaunch, dev);
     // cout << "supp " << supportsCoopLaunch << endl;
 
+    auto start = chrono::high_resolution_clock::now();
+
     for (int roundIdx = 0; roundIdx < numRounds; roundIdx++)
     {
+        // cout << "round " << roundIdx << endl;
 
-        void *kernelArgs[] = { &d_bitShufTimeSig, &sigLength, &roundIdx};
-
+        void *kernelArgs[] = { &d_bitShufTimeSig, &sigLength, &roundIdx, &tasksPerThread, &d_tempHold};
         // int dev = 0;
         // cudaDeviceProp deviceProp;
         // cudaGetDeviceProperties(&deviceProp, dev);
@@ -298,9 +344,10 @@ complex<double>* cudaIterFFT(double *timeSignal, unsigned long sigLength)
         dim3 dimBlock(threadsPerBlock, 1, 1);
         dim3 dimGrid(numBlocks, 1, 1);
         cudaLaunchCooperativeKernel((void*)binEx, dimGrid, dimBlock, kernelArgs);
-        cudaDeviceSynchronize();
-        // binEx<<<1, sigLength>>>(d_bitShufTimeSig, sigLength, roundIdx);
+        // cudaDeviceSynchronize();
+        // binEx<<<1, sigLength>>>(d_bitShufTimeSig, sigLength, roundIdx, tasksPerThread, d_tempHold);
         // cudaMemcpy(bitShufTimeSig, d_bitShufTimeSig, sizeof(cuda::std::complex<double>) * sigLength, cudaMemcpyDeviceToHost);
+        // cudaMemcpy(d_bitShufTimeSig, d_tempHold, sizeof(cuda::std::complex<double>) * sigLength, cudaMemcpyDeviceToDevice);
 
         // for (int sigIdx = 0; sigIdx < sigLength; sigIdx++)
         // {
@@ -311,9 +358,13 @@ complex<double>* cudaIterFFT(double *timeSignal, unsigned long sigLength)
         // }
         // cout << endl;
     }
+    auto stop = chrono::high_resolution_clock::now();
+    auto diff = chrono::duration_cast<chrono::microseconds>(stop - start);
+
+    cout << "parallel algo time (us): " << diff.count() << endl;
 
     cudaMemcpy(bitShufTimeSig, d_bitShufTimeSig, sizeof(cuda::std::complex<double>) * sigLength, cudaMemcpyDeviceToHost);
-    cudaFree(d_bitShufTimeSig);
+    // cudaFree(d_bitShufTimeSig);
 
     return bitShufTimeSig;
 
@@ -321,22 +372,22 @@ complex<double>* cudaIterFFT(double *timeSignal, unsigned long sigLength)
 
 int main()
 {
-    for (int i = 0; i < (int) log2(2048); i++)
-    {
-        cout << exchangeIdx(2047, i + 1) << " ";
-    }
-    cout << endl;
-    for (int i = 0; i < (int) log2(2048); i++)
-    {
-        cout << (((int) 2046 >> (i)) & 1) << " ";
-    }
-    cout << endl;
+    // for (int i = 0; i < (int) log2(2048); i++)
+    // {
+    //     cout << exchangeIdx(2047, i + 1) << " ";
+    // }
+    // cout << endl;
+    // for (int i = 0; i < (int) log2(2048); i++)
+    // {
+    //     cout << (((int) 2046 >> (i)) & 1) << " ";
+    // }
+    // cout << endl;
 
     complex<double>* fftResPtr;
     complex<double>* fftResPtr2;
 
-    unsigned long signalLength = 16384 * 2 * 2 * 2;
-    // unsigned long signalLength = 2048;
+    unsigned long signalLength = 67108864;
+    // unsigned long signalLength = 1048576;
 
     double pi = 2*acos(0.0);
 
@@ -355,14 +406,14 @@ int main()
     auto stop2 = chrono::high_resolution_clock::now();
     auto diff2 = chrono::duration_cast<chrono::microseconds>(stop2 - start2);
 
-    cout << "parallel took: " << diff2.count() << " us" << endl;
+    cout << "parallel total time (us): " << diff2.count() << endl;
 
     auto start1 = chrono::high_resolution_clock::now();
     fftResPtr = iterFFT(timeSignal, signalLength);
     auto stop1 = chrono::high_resolution_clock::now();
     auto diff1 = chrono::duration_cast<chrono::microseconds>(stop1 - start1);
 
-    cout << "iterative took: " << diff1.count() << " us" << endl;
+    cout << "iterative total time (us): " << diff1.count() << endl;
 
     cout << abs(fftResPtr[0]) << " " << abs(fftResPtr2[0]) << endl;
 
@@ -396,14 +447,14 @@ int main()
 
     int count = 0;
 
-    double roundingFactor = 100000.0;
+    double roundingFactor = 1000.0;
 
     for (int i = 0; i < signalLength; i++)
     {
         if (round(abs(fftResPtr[i]) * roundingFactor) / roundingFactor != round(abs(fftResPtr2[i]) * roundingFactor) / roundingFactor)
         {
             count += 1;
-            // cout << i << " " << abs(fftResPtr[i]) << " " << abs(fftResPtr2[i]) << endl;
+            cout << i << " " << abs(fftResPtr[i]) << " " << abs(fftResPtr2[i]) << endl;
         }
     }
 
