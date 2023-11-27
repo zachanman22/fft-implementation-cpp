@@ -1,99 +1,6 @@
-#include <iostream>
-#include <vector>
-#include <random>
-#include <ctime>
-#include <curand_kernel.h>
-#include <algorithm>
-#include <chrono>
-#include <cuda/std/complex>
-#include <cooperative_groups.h>
-#include <cuda_runtime_api.h>
-#include <bits/stdc++.h>
-#include <cmath>
-#include "omp.h"
+#include "fft.h"
 
 using namespace std;
-
-
-// __global__ void calcFFT(double *timeSignal, unsigned long sigLength, unsigned long fftLength, cuda::std::complex<double> *result)
-// {
-//     int tid = blockIdx.x * blockDim.x + threadIdx.x;
-
-//     double timeSigEven[(sigLength + 1) / 2];
-//     double timeSigOdd[(sigLength + 1) / 2];
-//     cuda::std::complex<double> fftEven[(sigLength + 1) / 2];
-//     cuda::std::complex<double> fftOdd[(sigLength + 1) / 2];
-//     for (int k = 0; k < sigLength; k++)
-//     {
-//         if (k % 2 == 0)
-//         {
-//             timeSigEven[k / 2] = timeSignal[k];
-//         }
-//         else
-//         {
-//             timeSigOdd[(k - 1) / 2] = timeSignal[k];
-//         }
-//     }
-
-//     calcFFT(timeSigEven, (sigLength + 1) / 2, (fftLength + 1) / 2, fftEven);
-//     calcFFT(timeSigOdd, (sigLength + 1) / 2, (fftLength + 1) / 2, fftOdd);
-
-//     cuda::std::complex<double> factors[fftLength];
-//     cuda::std::complex<double> j(0.0, 1.0);
-//     for (int n = 0; n < fftLength; n++)
-//     {
-//         factors[n] = exp(-2 * j * ((double) n / (double) fftLength));
-//     }
-
-//     result[tid] = 
-// }
-
-
-__device__ unsigned long cudaExchangeIdx(unsigned long currIdx, unsigned long roundIdx)
-{
-    unsigned long exchangeIdx = currIdx;
-    exchangeIdx ^= 1 << (roundIdx - 1);
-
-    return exchangeIdx;
-}
-
-unsigned long exchangeIdx(unsigned long currIdx, unsigned long roundIdx)
-{
-    unsigned long exchangeIdx = currIdx;
-    exchangeIdx ^= 1 << (roundIdx - 1);
-
-    return exchangeIdx;
-}
-
-__device__ unsigned long cudaBitRev(unsigned long num, unsigned long sigLength)
-{
-    int maxBit = (int) log2f(sigLength) - 1;
-
-    unsigned long rev = 0;
-
-    for (int i = maxBit; i >= 0; i--)
-    {
-        rev |= (num & 1) << i;
-        num >>= 1;
-    }
-
-    return rev;
-}
-
-unsigned int bitRev(unsigned int num, unsigned long sigLength)
-{
-    int maxBit = (int) log2(sigLength) - 1;
-
-    unsigned int rev = 0;
-
-    for (int i = maxBit; i >= 0; i--)
-    {
-        rev |= (num & 1) << i;
-        num >>= 1;
-    }
-
-    return rev;
-}
 
 __global__ void binEx(cuda::std::complex<double> *bitShufTimeSig, unsigned long sigLength, int roundIdx, int tasksPerThread, cuda::std::complex<double> *tempHold)
 {
@@ -129,7 +36,7 @@ __global__ void binEx(cuda::std::complex<double> *bitShufTimeSig, unsigned long 
         int numSampsPerBlock = 1 << roundIdx;
         // printf("numSampsPerBlock %d\n", numSampsPerBlock);
 
-        unsigned long exchangeIdx = cudaExchangeIdx(tid, roundIdx + 1);
+        unsigned long exchangeIdx = fft::cudaExchangeIdx(tid, roundIdx + 1);
         
         cuda::std::complex<double> i(0.0, 1.0);
 
@@ -205,9 +112,102 @@ __global__ void binEx(cuda::std::complex<double> *bitShufTimeSig, unsigned long 
     }
 }
 
-// https://pages.di.unipi.it/gemignani/woerner.pdf
-complex<double>* iterFFT(double *timeSignal, unsigned long sigLength)
+unsigned int fft::bitRev(unsigned int num, unsigned long sigLength)
 {
+    int maxBit = (int) log2(sigLength) - 1;
+
+    unsigned int rev = 0;
+
+    for (int i = maxBit; i >= 0; i--)
+    {
+        rev |= (num & 1) << i;
+        num >>= 1;
+    }
+
+    return rev;
+}
+
+unsigned long fft::exchangeIdx(unsigned long currIdx, unsigned long roundIdx)
+{
+    unsigned long exchangeIdx = currIdx;
+    exchangeIdx ^= 1 << (roundIdx - 1);
+
+    return exchangeIdx;
+}
+
+__device__ unsigned long fft::cudaBitRev(unsigned long num, unsigned long sigLength)
+{
+    int maxBit = (int) log2f(sigLength) - 1;
+
+    unsigned long rev = 0;
+
+    for (int i = maxBit; i >= 0; i--)
+    {
+        rev |= (num & 1) << i;
+        num >>= 1;
+    }
+
+    return rev;
+}
+
+__device__ unsigned long fft::cudaExchangeIdx(unsigned long currIdx, unsigned long roundIdx)
+{
+    unsigned long exchangeIdx = currIdx;
+    exchangeIdx ^= 1 << (roundIdx - 1);
+
+    return exchangeIdx;
+}
+
+unsigned long fft::zeroPadLength(double *timeSignal, unsigned long sigLength)
+{
+    if (ceil(log2(sigLength)) != floor(log2(sigLength)))
+    {
+        unsigned long nearest2Power = 1 << (int) ceil(log2(sigLength));
+
+        return nearest2Power;
+    }
+    else
+    {
+        return sigLength;
+    }
+
+}
+
+double* fft::zeroPadArray(double *timeSignal, unsigned long sigLength)
+{
+    if (ceil(log2(sigLength)) != floor(log2(sigLength)))
+    {
+        unsigned long nearest2Power = 1 << (int) ceil(log2(sigLength));
+
+        static double* paddedTimeSignal = (double*) malloc(nearest2Power * sizeof(double));;
+
+        for (int k = 0; k < nearest2Power; k++)
+        {
+            if (k < sigLength)
+            {
+                paddedTimeSignal[k] = timeSignal[k];
+            }
+            else
+            {
+                paddedTimeSignal[k] = 0;
+            }
+        }
+
+        return paddedTimeSignal;
+    }
+    else
+    {
+        return timeSignal;
+    }
+}
+
+// https://pages.di.unipi.it/gemignani/woerner.pdf
+complex<double>* fft::iterFFT(double *timeSignal, unsigned long sigLength)
+{
+    unsigned long tempNewSigLength = zeroPadLength(timeSignal, sigLength);
+    timeSignal = zeroPadArray(timeSignal, sigLength);
+    sigLength = tempNewSigLength;
+
     // Creates bit shuffled array
     static complex<double>* bitShufTimeSig;
     bitShufTimeSig = (complex<double>*) malloc(sigLength * sizeof(complex<double>));
@@ -270,8 +270,12 @@ complex<double>* iterFFT(double *timeSignal, unsigned long sigLength)
 }
 
 // Binary Exchange algorithm for parallel FFT
-complex<double>* cudaIterFFT(double *timeSignal, unsigned long sigLength)
+complex<double>* fft::cudaIterFFT(double *timeSignal, unsigned long sigLength)
 {
+    unsigned long tempNewSigLength = zeroPadLength(timeSignal, sigLength);
+    timeSignal = zeroPadArray(timeSignal, sigLength);
+    sigLength = tempNewSigLength;
+
     // Creates bit shuffled array
     static complex<double>* bitShufTimeSig;
     bitShufTimeSig = (complex<double>*) malloc(sigLength * sizeof(complex<double>));
@@ -359,8 +363,12 @@ complex<double>* cudaIterFFT(double *timeSignal, unsigned long sigLength)
 
 }
 
-complex<double>* ompIterFFT(double *timeSignal, unsigned long sigLength)
+complex<double>* fft::ompIterFFT(double *timeSignal, unsigned long sigLength)
 {
+    unsigned long tempNewSigLength = zeroPadLength(timeSignal, sigLength);
+    timeSignal = zeroPadArray(timeSignal, sigLength);
+    sigLength = tempNewSigLength;
+
     // Creates bit shuffled array
     static complex<double>* bitShufTimeSig;
     bitShufTimeSig = (complex<double>*) malloc(sigLength * sizeof(complex<double>));
@@ -429,7 +437,6 @@ complex<double>* ompIterFFT(double *timeSignal, unsigned long sigLength)
         {
             int startIdx = (blockIndx) * 2 * numSampsPerBlock;
             int endIdx = (blockIndx + 1) * 2 * numSampsPerBlock - 1;
-            int midIdx = startIdx + (endIdx - startIdx + 1) / 2;
 
             for (int resIdx = startIdx; resIdx <= endIdx; resIdx++)
             {
@@ -444,120 +451,5 @@ complex<double>* ompIterFFT(double *timeSignal, unsigned long sigLength)
     cout << "omp algo time (us): " << diff.count() << endl;
 
     return bitShufTimeSig;
-
-}
-
-int main()
-{
-    // for (int i = 0; i < (int) log2(2048); i++)
-    // {
-    //     cout << exchangeIdx(2047, i + 1) << " ";
-    // }
-    // cout << endl;
-    // for (int i = 0; i < (int) log2(2048); i++)
-    // {
-    //     cout << (((int) 2046 >> (i)) & 1) << " ";
-    // }
-    // cout << endl;
-
-    complex<double>* fftResPtr;
-    complex<double>* fftResPtrCuda;
-    complex<double>* fftResPtrOmp;
-
-    // unsigned long signalLength = 67108864;
-    unsigned long signalLength = 262144 / 2;
-
-    double pi = 2*acos(0.0);
-
-    double timeSignal[signalLength];
-
-    cout << "Time Signal" << endl;
-    for (int i = 0; i < signalLength; i++)
-    {
-        timeSignal[i] = cos(pi / 10 * i);
-        // cout << timeSignal[i] << " ";
-    }
-    cout << endl;
-
-    // auto startCuda = chrono::high_resolution_clock::now();
-    // fftResPtrCuda = cudaIterFFT(timeSignal, signalLength);
-    // auto stopCuda = chrono::high_resolution_clock::now();
-    // auto diffCuda = chrono::duration_cast<chrono::microseconds>(stopCuda - startCuda);
-
-    // cout << "parallel total time (us): " << diffCuda.count() << endl;
-
-    auto startOmp = chrono::high_resolution_clock::now();
-    fftResPtrOmp = ompIterFFT(timeSignal, signalLength);
-    auto stopOmp = chrono::high_resolution_clock::now();
-    auto diffOmp = chrono::duration_cast<chrono::microseconds>(stopOmp - startOmp);
-
-    cout << "omp total time (us): " << diffOmp.count() << endl;
-
-    auto start = chrono::high_resolution_clock::now();
-    fftResPtr = iterFFT(timeSignal, signalLength);
-    auto stop = chrono::high_resolution_clock::now();
-    auto diff = chrono::duration_cast<chrono::microseconds>(stop - start);
-
-    cout << "iterative total time (us): " << diff.count() << endl;
-
-    cout << abs(fftResPtr[0]) << " " << abs(fftResPtrOmp[0]) << endl;
-
-    cout << "FFT Complex" << endl;
-    for (int i = 0; i < signalLength; i++)
-    {
-        // cout << fftResPtr[i] << " ";
-    }
-    cout << endl;
-
-    cout << "FFT Mag" << endl;
-    for (int i = 0; i < signalLength; i++)
-    {
-        // cout << abs(fftResPtr[i]) << " ";
-    }
-    cout << endl;
-    
-    cout << "FFT Complex" << endl;
-    for (int i = 0; i < signalLength; i++)
-    {
-        // cout << fftResPtrCuda[i] << " ";
-    }
-    cout << endl;
-
-    cout << "FFT Mag" << endl;
-    for (int i = 0; i < signalLength; i++)
-    {
-        // cout << abs(fftResPtrOmp[i]) << " ";
-    }
-    cout << endl;
-
-    int countCuda = 0;
-
-    double roundingFactor = 1000.0;
-
-    // for (int i = 0; i < signalLength; i++)
-    // {
-    //     if (round(abs(fftResPtr[i]) * roundingFactor) / roundingFactor != round(abs(fftResPtrCuda[i]) * roundingFactor) / roundingFactor)
-    //     {
-    //         countCuda += 1;
-    //         cout << i << " " << abs(fftResPtr[i]) << " " << abs(fftResPtrCuda[i]) << endl;
-    //     }
-    // }
-
-    // cout << countCuda << endl;
-
-    int countOmp = 0;
-
-    for (int i = 0; i < signalLength; i++)
-    {
-        cout << fftResPtr[i] << " " << fftResPtrOmp[i] << endl;
-        if (round(abs(fftResPtr[i]) * roundingFactor) / roundingFactor != round(abs(fftResPtrOmp[i]) * roundingFactor) / roundingFactor)
-        {
-            countOmp += 1;
-            cout << i << " " << abs(fftResPtr[i]) << " " << abs(fftResPtrOmp[i]) << endl;
-        }
-    }
-
-    cout << countOmp << endl;
-
 
 }
