@@ -16,7 +16,7 @@
 
 using namespace std;
 
-// __global__ void dftCuda(cuda::std::complex<double> *dftResult, unsigned long sigLength, double *timeSignal);
+__global__ void dftCuda(cuda::std::complex<double> *dftResult, unsigned long sigLength, double *timeSignal);
 
 class dft
 {

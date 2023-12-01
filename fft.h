@@ -29,12 +29,10 @@ class fft
         complex<double>* ompIterFFT(double *timeSignal, unsigned long sigLength);
 
         // Static for the device functions to be called in kernel
-        static __device__ unsigned long cudaBitRev(unsigned long num, unsigned long sigLength);
         static __device__ unsigned long cudaExchangeIdx(unsigned long currIdx, unsigned long roundIdx);
     
     protected:
         static unsigned int bitRev(unsigned int num, unsigned long sigLength);
-        static unsigned long exchangeIdx(unsigned long currIdx, unsigned long roundIdx);
 
         static unsigned long zeroPadLength(double *timeSignal, unsigned long sigLength);
         static double* zeroPadArray(double *timeSignal, unsigned long sigLength);

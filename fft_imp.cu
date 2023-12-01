@@ -127,29 +127,6 @@ unsigned int fft::bitRev(unsigned int num, unsigned long sigLength)
     return rev;
 }
 
-unsigned long fft::exchangeIdx(unsigned long currIdx, unsigned long roundIdx)
-{
-    unsigned long exchangeIdx = currIdx;
-    exchangeIdx ^= 1 << (roundIdx - 1);
-
-    return exchangeIdx;
-}
-
-__device__ unsigned long fft::cudaBitRev(unsigned long num, unsigned long sigLength)
-{
-    int maxBit = (int) log2f(sigLength) - 1;
-
-    unsigned long rev = 0;
-
-    for (int i = maxBit; i >= 0; i--)
-    {
-        rev |= (num & 1) << i;
-        num >>= 1;
-    }
-
-    return rev;
-}
-
 __device__ unsigned long fft::cudaExchangeIdx(unsigned long currIdx, unsigned long roundIdx)
 {
     unsigned long exchangeIdx = currIdx;
