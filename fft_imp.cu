@@ -378,6 +378,8 @@ complex<double>* fft::ompIterFFT(double *timeSignal, unsigned long sigLength)
         bitShufTimeSig[k] = timeSignal[bitRev(k, sigLength)];
     }
 
+    complex<double>* tempHold = (complex<double>*) malloc(sigLength * sizeof(complex<double>));
+
     double pi = 2*acos(0.0);
 
     int numRounds = (int) log2(sigLength);
@@ -401,10 +403,7 @@ complex<double>* fft::ompIterFFT(double *timeSignal, unsigned long sigLength)
         }
 
         int numBlocksPerRound = 1 << (numRounds - roundIdx - 1);
-
-        complex<double>* tempHold = (complex<double>*) malloc(sigLength * sizeof(complex<double>));
-
-        cout << roundIdx << endl;
+        
         #pragma omp parallel for num_threads(numThreads)
         for (int blockIndx = 0; blockIndx < numBlocksPerRound; blockIndx++)
         {
@@ -412,13 +411,13 @@ complex<double>* fft::ompIterFFT(double *timeSignal, unsigned long sigLength)
             int endIdx = (blockIndx + 1) * 2 * numSampsPerBlock - 1;
             int midIdx = startIdx + (endIdx - startIdx + 1) / 2;
 
-            complex<double> top[midIdx - startIdx];
+            complex<double>* top = (complex<double>*) malloc(sizeof(complex<double>) * (midIdx - startIdx));
             for (int topIdx = startIdx; topIdx < midIdx; topIdx++)
             {
                 top[topIdx - startIdx] = bitShufTimeSig[topIdx];
             }
 
-            complex<double> bot[endIdx - midIdx + 1];
+            complex<double>* bot = (complex<double>*) malloc(sizeof(complex<double>) * (endIdx - midIdx + 1));
             for (int botIdx = midIdx; botIdx <= endIdx; botIdx++)
             {
                 bot[botIdx - midIdx] = bitShufTimeSig[botIdx] * compFactors[botIdx - midIdx];
@@ -426,10 +425,11 @@ complex<double>* fft::ompIterFFT(double *timeSignal, unsigned long sigLength)
 
             for (int resIdx = startIdx; resIdx <= endIdx; resIdx++)
             {
-                // cout << resIdx << " ";
                 tempHold[resIdx] = resIdx < midIdx ? top[resIdx - startIdx] + bot[resIdx - startIdx] : top[resIdx - midIdx] - bot[resIdx - midIdx];
             }
             // cout << endl;
+            free(top);
+            free(bot);
         }
 
         #pragma omp parallel for num_threads(numThreads)
@@ -442,9 +442,10 @@ complex<double>* fft::ompIterFFT(double *timeSignal, unsigned long sigLength)
             {
                 bitShufTimeSig[resIdx] = tempHold[resIdx];
             }
-
         }
     }
+
+    free(tempHold);
 
     auto stop = chrono::high_resolution_clock::now();
     auto diff = chrono::duration_cast<chrono::microseconds>(stop - start);
