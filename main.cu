@@ -3,11 +3,11 @@
 
 int main()
 {
-    fft fftObj = fft::fft();
-    dft dftObj = dft::dft();
+    fft fftObj;
+    dft dftObj;
 
-    unsigned long signalLength = 262144;
-    // unsigned long signalLength = 16384;
+    // unsigned long signalLength = 262144 * 256;
+    unsigned long signalLength = 16384 * 8;
 
     double pi = 2*acos(0.0);
 
@@ -24,22 +24,30 @@ int main()
     complex<double>* fftResPtrCuda;
     complex<double>* fftResPtrOmp;
 
-    fftResPtr = fftObj.iterFFT(timeSignal, signalLength);
-    fftResPtrCuda = fftObj.cudaIterFFT(timeSignal, signalLength);
-    fftResPtrOmp = fftObj.ompIterFFT(timeSignal, signalLength);
+    // fftResPtr = fftObj.iterative(timeSignal, signalLength);
+    // fftResPtrCuda = fftObj.cudaParallel(timeSignal, signalLength);
+    // fftResPtrOmp = fftObj.ompParallel(timeSignal, signalLength);
 
-    for (int i = 0; i < 100; i++)
-    {
-        cout << fftResPtr[i] << " " << fftResPtrCuda[i] << " " << fftResPtrOmp[i] << endl;
-    }
+    // fftResPtr = fftObj.timeAlgorithm(timeSignal, signalLength, &fourierAlgorithms::iterative);
+    // fftResPtrCuda = fftObj.timeAlgorithm(timeSignal, signalLength, &fourierAlgorithms::cudaParallel);
+    // fftResPtrOmp = fftObj.timeAlgorithm(timeSignal, signalLength, &fourierAlgorithms::ompParallel);
+
+    // for (int i = 0; i < 100; i++)
+    // {
+    //     cout << fftResPtr[i] << " " << fftResPtrCuda[i] << " " << fftResPtrOmp[i] << endl;
+    // }
 
     complex<double>* dftResPtr;
     complex<double>* dftResPtrCuda;
     complex<double>* dftResPtrOmp;
 
-    // dftResPtr = dftObj.iterDFT(timeSignal, signalLength);
-    // dftResPtrCuda = dftObj.cudaIterDFT(timeSignal, signalLength);
-    // dftResPtrOmp = dftObj.ompIterDFT(timeSignal, signalLength);
+    // dftResPtr = dftObj.iterative(timeSignal, signalLength);
+    // dftResPtrCuda = dftObj.cudaParallel(timeSignal, signalLength);
+    // dftResPtrOmp = dftObj.ompParallel(timeSignal, signalLength);
+
+    // dftResPtr = dftObj.timeAlgorithm(timeSignal, signalLength, &fourierAlgorithms::iterative);
+    dftResPtrCuda = dftObj.timeAlgorithm(timeSignal, signalLength, &fourierAlgorithms::cudaParallel);
+    dftResPtrOmp = dftObj.timeAlgorithm(timeSignal, signalLength, &fourierAlgorithms::ompParallel);
 
     // for (int i = 0; i < 100; i++)
     // {
@@ -48,6 +56,6 @@ int main()
 
     // for (int i = 0; i < 100; i++)
     // {
-    //     cout << fftResPtr[i] << " " << fftResPtrCuda[i] << " " << fftResPtrOmp[i] <<  " " << dftResPtrCuda[i] << " " << dftResPtrOmp[i] << endl;
+    //     cout << fftResPtr[i] << " " << fftResPtrCuda[i] << " " << fftResPtrOmp[i] << " " << dftResPtrCuda[i] << " " << dftResPtrOmp[i] << endl;
     // }
 }

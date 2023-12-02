@@ -2,7 +2,7 @@
 
 using namespace std;
 
-__global__ void dftCuda(cuda::std::complex<double> *dftResult, unsigned long sigLength, double *timeSignal)
+__global__ void dftKernel(cuda::std::complex<double> *dftResult, unsigned long sigLength, double *timeSignal, int tasksPerThread)
 {
     auto group = cooperative_groups::this_grid();
     auto block = cooperative_groups::this_thread_block();
@@ -18,66 +18,22 @@ __global__ void dftCuda(cuda::std::complex<double> *dftResult, unsigned long sig
 
     double pi = 2*acos(0.0);
 
-    cuda::std::complex<double> compSum = 0;
-
-    for (int nIdx = 0; nIdx < sigLength; nIdx++)
+    for (int tid = tasksPerThread * threadId; tid < tasksPerThread * threadId + tasksPerThread; tid++)
     {
-        double fractFactor = (double) (nIdx * threadId) / (double) sigLength;
-        compSum += timeSignal[nIdx] * exp(-2 * pi * i * fractFactor);
-    }
-
-    dftResult[threadId] = compSum;
-}
-
-unsigned long dft::zeroPadLength(double *timeSignal, unsigned long sigLength)
-{
-    if (ceil(log2(sigLength)) != floor(log2(sigLength)))
-    {
-        unsigned long nearest2Power = 1 << (int) ceil(log2(sigLength));
-
-        return nearest2Power;
-    }
-    else
-    {
-        return sigLength;
-    }
-
-}
-
-double* dft::zeroPadArray(double *timeSignal, unsigned long sigLength)
-{
-    if (ceil(log2(sigLength)) != floor(log2(sigLength)))
-    {
-        unsigned long nearest2Power = 1 << (int) ceil(log2(sigLength));
-
-        static double* paddedTimeSignal = (double*) malloc(nearest2Power * sizeof(double));;
-
-        for (int k = 0; k < nearest2Power; k++)
+        cuda::std::complex<double> compSum = 0;
+        for (int nIdx = 0; nIdx < sigLength; nIdx++)
         {
-            if (k < sigLength)
-            {
-                paddedTimeSignal[k] = timeSignal[k];
-            }
-            else
-            {
-                paddedTimeSignal[k] = 0;
-            }
+            double fractFactor = (double) (nIdx * tid) / (double) sigLength;
+            compSum += timeSignal[nIdx] * exp(-2 * pi * i * fractFactor);
         }
-
-        return paddedTimeSignal;
-    }
-    else
-    {
-        return timeSignal;
+        dftResult[tid] = compSum;
     }
 }
 
 // https://pages.di.unipi.it/gemignani/woerner.pdf
-complex<double>* dft::iterDFT(double *timeSignal, unsigned long sigLength)
+complex<double>* dft::iterative(double *timeSignal, unsigned long sigLength)
 {
-    // unsigned long tempNewSigLength = zeroPadLength(timeSignal, sigLength);
-    // timeSignal = zeroPadArray(timeSignal, sigLength);
-    // sigLength = tempNewSigLength;
+    cout << "Running Iterative DFT" << endl;
 
     double pi = 2*acos(0.0);
 
@@ -85,7 +41,7 @@ complex<double>* dft::iterDFT(double *timeSignal, unsigned long sigLength)
 
     complex<double>* dftResult = (complex<double>*) malloc(sigLength * sizeof(complex<double>));
     
-    auto start = chrono::high_resolution_clock::now();
+    // auto start = chrono::high_resolution_clock::now();
 
     for (int kIdx = 0; kIdx < sigLength; kIdx++)
     {
@@ -100,54 +56,43 @@ complex<double>* dft::iterDFT(double *timeSignal, unsigned long sigLength)
     }
 
 
-    auto stop = chrono::high_resolution_clock::now();
-    auto diff = chrono::duration_cast<chrono::microseconds>(stop - start);
-    cout << "iterative algo time (us): " << diff.count() << endl;
+    // auto stop = chrono::high_resolution_clock::now();
+    // auto diff = chrono::duration_cast<chrono::microseconds>(stop - start);
+    // cout << "iterative algo time (us): " << diff.count() << endl;
 
     return dftResult;
 
 }
 
 // Binary Exchange algorithm for parallel FFT
-complex<double>* dft::cudaIterDFT(double *timeSignal, unsigned long sigLength)
+complex<double>* dft::cudaParallel(double *timeSignal, unsigned long sigLength)
 {
-    // unsigned long tempNewSigLength = zeroPadLength(timeSignal, sigLength);
-    // timeSignal = zeroPadArray(timeSignal, sigLength);
-    // sigLength = tempNewSigLength;
-
-    // // Creates bit shuffled array
-    // static complex<double>* bitShufTimeSig;
-    // bitShufTimeSig = (complex<double>*) malloc(sigLength * sizeof(complex<double>));
-    // // cudaMallocHost((void**) &bitShufTimeSig, sigLength * sizeof(complex<double>));
-    // // cudaMallocManaged((void**) &bitShufTimeSig, sigLength * sizeof(complex<double>));
-    // for (int k = 0; k < sigLength; k++)
-    // {
-    //     // Shuffles the order of the signal based on bit reversed indices
-    //     bitShufTimeSig[k] = timeSignal[bitRev(k, sigLength)];
-    // }
+    cout << "Running CUDA Parallelized DFT" << endl;
 
     complex<double>* dftResult = (complex<double>*) malloc(sigLength * sizeof(complex<double>));
 
     int threadsPerBlock;
     int numBlocks;
+    int tasksPerThread;
     if (sigLength <= 1024)
     {
         threadsPerBlock = sigLength;
         numBlocks = 1;
+        tasksPerThread = 1;
     }
     else
     {
         threadsPerBlock = 1024;
         numBlocks = (int) ceil(sigLength / 1024.0);
+        tasksPerThread = 1;
     }
 
     // Can not spawn more than 64 blocks (probably more but will need to be power of 2 and could not spawn 128 blocks)
     if (numBlocks > 64)
     {
         numBlocks = 64;
+        tasksPerThread = (int) ceil(sigLength / (1024.0 * 64.0));
     }
-
-    cout << numBlocks << endl;
 
     double pi = 2*acos(0.0);
 
@@ -159,11 +104,11 @@ complex<double>* dft::cudaIterDFT(double *timeSignal, unsigned long sigLength)
 
     cudaMemcpy(d_timeSignal, timeSignal, sizeof(double) * sigLength, cudaMemcpyHostToDevice);
 
-    auto start = chrono::high_resolution_clock::now();
+    // auto start = chrono::high_resolution_clock::now();
 
     // cout << "round " << roundIdx << endl;
 
-    void *kernelArgs[] = { &d_dftResult, &sigLength, &d_timeSignal};
+    void *kernelArgs[] = { &d_dftResult, &sigLength, &d_timeSignal, &tasksPerThread};
     // int dev = 0;
     // cudaDeviceProp deviceProp;
     // cudaGetDeviceProperties(&deviceProp, dev);
@@ -171,14 +116,14 @@ complex<double>* dft::cudaIterDFT(double *timeSignal, unsigned long sigLength)
 
     dim3 dimBlock(threadsPerBlock, 1, 1);
     dim3 dimGrid(numBlocks, 1, 1);
-    cudaLaunchCooperativeKernel((void*)dftCuda, dimGrid, dimBlock, kernelArgs);
+    cudaLaunchCooperativeKernel((void*)dftKernel, dimGrid, dimBlock, kernelArgs);
     // cudaDeviceSynchronize();
     // binEx<<<1, sigLength>>>(d_bitShufTimeSig, sigLength, roundIdx, tasksPerThread, d_tempHold);
     
-    auto stop = chrono::high_resolution_clock::now();
-    auto diff = chrono::duration_cast<chrono::microseconds>(stop - start);
+    // auto stop = chrono::high_resolution_clock::now();
+    // auto diff = chrono::duration_cast<chrono::microseconds>(stop - start);
 
-    cout << "parallel algo time (us): " << diff.count() << endl;
+    // cout << "parallel algo time (us): " << diff.count() << endl;
 
     cudaMemcpy(dftResult, d_dftResult, sizeof(cuda::std::complex<double>) * sigLength, cudaMemcpyDeviceToHost);
     cudaFree(d_dftResult);
@@ -188,30 +133,17 @@ complex<double>* dft::cudaIterDFT(double *timeSignal, unsigned long sigLength)
 
 }
 
-complex<double>* dft::ompIterDFT(double *timeSignal, unsigned long sigLength)
+complex<double>* dft::ompParallel(double *timeSignal, unsigned long sigLength)
 {
-    // unsigned long tempNewSigLength = zeroPadLength(timeSignal, sigLength);
-    // timeSignal = zeroPadArray(timeSignal, sigLength);
-    // sigLength = tempNewSigLength;
-
-    // // Creates bit shuffled array
-    // static complex<double>* bitShufTimeSig;
-    // bitShufTimeSig = (complex<double>*) malloc(sigLength * sizeof(complex<double>));
-    // for (int k = 0; k < sigLength; k++)
-    // {
-    //     // Shuffles the order of the signal based on bit reversed indices
-    //     bitShufTimeSig[k] = timeSignal[bitRev(k, sigLength)];
-    // }
+    cout << "Running OMP Parallelized DFT" << endl;
 
     complex<double>* dftResult = (complex<double>*) malloc(sigLength * sizeof(complex<double>));
 
     double pi = 2*acos(0.0);
 
     int numThreads = omp_get_max_threads() - 1;
-
-    cout << "numThreads: " << numThreads << endl;
     
-    auto start = chrono::high_resolution_clock::now();
+    // auto start = chrono::high_resolution_clock::now();
     
     #pragma omp parallel for num_threads(numThreads)
     for (int kIdx = 0; kIdx < sigLength; kIdx++)
@@ -225,9 +157,9 @@ complex<double>* dft::ompIterDFT(double *timeSignal, unsigned long sigLength)
         dftResult[kIdx] = compSum;
     }
 
-    auto stop = chrono::high_resolution_clock::now();
-    auto diff = chrono::duration_cast<chrono::microseconds>(stop - start);
-    cout << "omp algo time (us): " << diff.count() << endl;
+    // auto stop = chrono::high_resolution_clock::now();
+    // auto diff = chrono::duration_cast<chrono::microseconds>(stop - start);
+    // cout << "omp algo time (us): " << diff.count() << endl;
 
     return dftResult;
 

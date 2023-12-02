@@ -13,22 +13,19 @@
 #include <bits/stdc++.h>
 #include <cmath>
 #include "omp.h"
+#include "fourierAlgorithms.h"
 
 using namespace std;
 
 __global__ void dftCuda(cuda::std::complex<double> *dftResult, unsigned long sigLength, double *timeSignal);
 
-class dft
+class dft : public fourierAlgorithms
 {
 
     public:
-        complex<double>* iterDFT(double *timeSignal, unsigned long sigLength);
+        complex<double>* iterative(double *timeSignal, unsigned long sigLength);
 
-        complex<double>* cudaIterDFT(double *timeSignal, unsigned long sigLength);
+        complex<double>* cudaParallel(double *timeSignal, unsigned long sigLength);
 
-        complex<double>* ompIterDFT(double *timeSignal, unsigned long sigLength);
-    
-    protected:
-        static unsigned long zeroPadLength(double *timeSignal, unsigned long sigLength);
-        static double* zeroPadArray(double *timeSignal, unsigned long sigLength);
+        complex<double>* ompParallel(double *timeSignal, unsigned long sigLength);
 };

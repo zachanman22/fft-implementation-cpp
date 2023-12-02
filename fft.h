@@ -13,20 +13,21 @@
 #include <bits/stdc++.h>
 #include <cmath>
 #include "omp.h"
+#include "fourierAlgorithms.h"
 
 using namespace std;
 
 __global__ void binEx(cuda::std::complex<double> *bitShufTimeSig, unsigned long sigLength, int roundIdx, int tasksPerThread, cuda::std::complex<double> *tempHold);
 
-class fft
+class fft : public fourierAlgorithms
 {
 
     public:
-        complex<double>* iterFFT(double *timeSignal, unsigned long sigLength);
+        complex<double>* iterative(double *timeSignal, unsigned long sigLength);
 
-        complex<double>* cudaIterFFT(double *timeSignal, unsigned long sigLength);
+        complex<double>* cudaParallel(double *timeSignal, unsigned long sigLength);
 
-        complex<double>* ompIterFFT(double *timeSignal, unsigned long sigLength);
+        complex<double>* ompParallel(double *timeSignal, unsigned long sigLength);
 
         // Static for the device functions to be called in kernel
         static __device__ unsigned long cudaExchangeIdx(unsigned long currIdx, unsigned long roundIdx);
@@ -34,6 +35,6 @@ class fft
     protected:
         static unsigned int bitRev(unsigned int num, unsigned long sigLength);
 
-        static unsigned long zeroPadLength(double *timeSignal, unsigned long sigLength);
-        static double* zeroPadArray(double *timeSignal, unsigned long sigLength);
+        static unsigned long zeroPad2PowerLength(double *timeSignal, unsigned long sigLength);
+        static double* zeroPad2PowerArray(double *timeSignal, unsigned long sigLength);
 };

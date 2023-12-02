@@ -135,7 +135,7 @@ __device__ unsigned long fft::cudaExchangeIdx(unsigned long currIdx, unsigned lo
     return exchangeIdx;
 }
 
-unsigned long fft::zeroPadLength(double *timeSignal, unsigned long sigLength)
+unsigned long fft::zeroPad2PowerLength(double *timeSignal, unsigned long sigLength)
 {
     if (ceil(log2(sigLength)) != floor(log2(sigLength)))
     {
@@ -150,7 +150,7 @@ unsigned long fft::zeroPadLength(double *timeSignal, unsigned long sigLength)
 
 }
 
-double* fft::zeroPadArray(double *timeSignal, unsigned long sigLength)
+double* fft::zeroPad2PowerArray(double *timeSignal, unsigned long sigLength)
 {
     if (ceil(log2(sigLength)) != floor(log2(sigLength)))
     {
@@ -158,17 +158,7 @@ double* fft::zeroPadArray(double *timeSignal, unsigned long sigLength)
 
         static double* paddedTimeSignal = (double*) malloc(nearest2Power * sizeof(double));;
 
-        for (int k = 0; k < nearest2Power; k++)
-        {
-            if (k < sigLength)
-            {
-                paddedTimeSignal[k] = timeSignal[k];
-            }
-            else
-            {
-                paddedTimeSignal[k] = 0;
-            }
-        }
+        paddedTimeSignal = zeroPadArray(timeSignal, sigLength, nearest2Power - sigLength);
 
         return paddedTimeSignal;
     }
@@ -179,10 +169,11 @@ double* fft::zeroPadArray(double *timeSignal, unsigned long sigLength)
 }
 
 // https://pages.di.unipi.it/gemignani/woerner.pdf
-complex<double>* fft::iterFFT(double *timeSignal, unsigned long sigLength)
+complex<double>* fft::iterative(double *timeSignal, unsigned long sigLength)
 {
-    unsigned long tempNewSigLength = zeroPadLength(timeSignal, sigLength);
-    timeSignal = zeroPadArray(timeSignal, sigLength);
+    cout << "Running Iterative FFT" << endl;
+    unsigned long tempNewSigLength = zeroPad2PowerLength(timeSignal, sigLength);
+    timeSignal = zeroPad2PowerArray(timeSignal, sigLength);
     sigLength = tempNewSigLength;
 
     // Creates bit shuffled array
@@ -198,7 +189,7 @@ complex<double>* fft::iterFFT(double *timeSignal, unsigned long sigLength)
 
     int numRounds = (int) log2(sigLength);
     
-    auto start = chrono::high_resolution_clock::now();
+    // auto start = chrono::high_resolution_clock::now();
 
     for (int roundIdx = 0; roundIdx < numRounds; roundIdx++)
     {
@@ -238,19 +229,21 @@ complex<double>* fft::iterFFT(double *timeSignal, unsigned long sigLength)
         }
     }
 
-    auto stop = chrono::high_resolution_clock::now();
-    auto diff = chrono::duration_cast<chrono::microseconds>(stop - start);
-    cout << "iterative algo time (us): " << diff.count() << endl;
+    // auto stop = chrono::high_resolution_clock::now();
+    // auto diff = chrono::duration_cast<chrono::microseconds>(stop - start);
+    // cout << "iterative algo time (us): " << diff.count() << endl;
 
     return bitShufTimeSig;
 
 }
 
 // Binary Exchange algorithm for parallel FFT
-complex<double>* fft::cudaIterFFT(double *timeSignal, unsigned long sigLength)
+complex<double>* fft::cudaParallel(double *timeSignal, unsigned long sigLength)
 {
-    unsigned long tempNewSigLength = zeroPadLength(timeSignal, sigLength);
-    timeSignal = zeroPadArray(timeSignal, sigLength);
+    cout << "Running CUDA Parallelized FFT" << endl;
+
+    unsigned long tempNewSigLength = zeroPad2PowerLength(timeSignal, sigLength);
+    timeSignal = zeroPad2PowerArray(timeSignal, sigLength);
     sigLength = tempNewSigLength;
 
     // Creates bit shuffled array
@@ -288,9 +281,6 @@ complex<double>* fft::cudaIterFFT(double *timeSignal, unsigned long sigLength)
 
     }
 
-    cout << numBlocks << endl;
-    cout << tasksPerThread << endl;
-
     double pi = 2*acos(0.0);
 
     cuda::std::complex<double>* d_bitShufTimeSig;
@@ -310,7 +300,7 @@ complex<double>* fft::cudaIterFFT(double *timeSignal, unsigned long sigLength)
     // cudaDeviceGetAttribute(&supportsCoopLaunch, cudaDevAttrCooperativeLaunch, dev);
     // cout << "supp " << supportsCoopLaunch << endl;
 
-    auto start = chrono::high_resolution_clock::now();
+    // auto start = chrono::high_resolution_clock::now();
 
     for (int roundIdx = 0; roundIdx < numRounds; roundIdx++)
     {
@@ -328,10 +318,10 @@ complex<double>* fft::cudaIterFFT(double *timeSignal, unsigned long sigLength)
         // cudaDeviceSynchronize();
         // binEx<<<1, sigLength>>>(d_bitShufTimeSig, sigLength, roundIdx, tasksPerThread, d_tempHold);
     }
-    auto stop = chrono::high_resolution_clock::now();
-    auto diff = chrono::duration_cast<chrono::microseconds>(stop - start);
+    // auto stop = chrono::high_resolution_clock::now();
+    // auto diff = chrono::duration_cast<chrono::microseconds>(stop - start);
 
-    cout << "parallel algo time (us): " << diff.count() << endl;
+    // cout << "parallel algo time (us): " << diff.count() << endl;
 
     cudaMemcpy(bitShufTimeSig, d_bitShufTimeSig, sizeof(cuda::std::complex<double>) * sigLength, cudaMemcpyDeviceToHost);
     // cudaFree(d_bitShufTimeSig);
@@ -340,10 +330,12 @@ complex<double>* fft::cudaIterFFT(double *timeSignal, unsigned long sigLength)
 
 }
 
-complex<double>* fft::ompIterFFT(double *timeSignal, unsigned long sigLength)
+complex<double>* fft::ompParallel(double *timeSignal, unsigned long sigLength)
 {
-    unsigned long tempNewSigLength = zeroPadLength(timeSignal, sigLength);
-    timeSignal = zeroPadArray(timeSignal, sigLength);
+    cout << "Running OMP Parallelized FFT" << endl;
+
+    unsigned long tempNewSigLength = zeroPad2PowerLength(timeSignal, sigLength);
+    timeSignal = zeroPad2PowerArray(timeSignal, sigLength);
     sigLength = tempNewSigLength;
 
     // Creates bit shuffled array
@@ -362,10 +354,8 @@ complex<double>* fft::ompIterFFT(double *timeSignal, unsigned long sigLength)
     int numRounds = (int) log2(sigLength);
 
     int numThreads = omp_get_max_threads() - 1;
-
-    cout << "numThreads: " << numThreads << endl;
     
-    auto start = chrono::high_resolution_clock::now();
+    // auto start = chrono::high_resolution_clock::now();
 
     for (int roundIdx = 0; roundIdx < numRounds; roundIdx++)
     {
@@ -424,9 +414,9 @@ complex<double>* fft::ompIterFFT(double *timeSignal, unsigned long sigLength)
 
     free(tempHold);
 
-    auto stop = chrono::high_resolution_clock::now();
-    auto diff = chrono::duration_cast<chrono::microseconds>(stop - start);
-    cout << "omp algo time (us): " << diff.count() << endl;
+    // auto stop = chrono::high_resolution_clock::now();
+    // auto diff = chrono::duration_cast<chrono::microseconds>(stop - start);
+    // cout << "omp algo time (us): " << diff.count() << endl;
 
     return bitShufTimeSig;
 
