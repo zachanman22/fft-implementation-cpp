@@ -16,7 +16,7 @@ In the fft-implementation-cpp directory:
 mkdir build
 cd build
 cmake ..
-make
+make -j8
 
 To run main.out:
 cd executable

@@ -6,14 +6,13 @@ int main()
     FFT fftObj;
     DFT dftObj;
 
-    // unsigned long signalLength = 262144 * 512;
+    // unsigned long signalLength = 262144 * 256;
     unsigned long signalLength = 16384 / 2;
 
     double pi = 2*acos(0.0);
 
     double timeSignal[signalLength];
 
-    cout << "Time Signal" << endl;
     for (int i = 0; i < signalLength; i++)
     {
         timeSignal[i] = cos(pi / 10 * i);
@@ -62,8 +61,8 @@ int main()
     //     cout << dftResPtr[i] << " " << dftResPtrCuda[i] << " " << dftResPtrOmp[i] << endl;
     // }
 
-    for (int i = 0; i < 100; i++)
-    {
-        cout << fftResPtr[i] << " " << fftResPtrCuda[i] << " " << fftResPtrOmp[i] << " " << dftResPtr[i] << " " << dftResPtrCuda[i] << " " << dftResPtrOmp[i] << endl;
-    }
+    // for (int i = 0; i < 100; i++)
+    // {
+    //     cout << fftResPtr[i] << " " << fftResPtrCuda[i] << " " << fftResPtrOmp[i] << " " << dftResPtr[i] << " " << dftResPtrCuda[i] << " " << dftResPtrOmp[i] << endl;
+    // }
 }
