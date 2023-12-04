@@ -14,7 +14,7 @@ __global__ void dftKernel(cuda::std::complex<double> *dftResult, unsigned long s
     // printf("tid %d\n", tid);
     // cuda::std::complex<double>* holding = (cuda::std::complex<double>*) malloc(tasksPerThread * sizeof(cuda::std::complex<double>));
 
-    cuda::std::complex<double> i(0.0, 1.0);
+    cuda::std::complex<double> j(0.0, 1.0);
 
     double pi = 2*acos(0.0);
 
@@ -24,7 +24,7 @@ __global__ void dftKernel(cuda::std::complex<double> *dftResult, unsigned long s
         for (int nIdx = 0; nIdx < sigLength; nIdx++)
         {
             double fractFactor = (double) (nIdx * tid) / (double) sigLength;
-            compSum += timeSignal[nIdx] * exp(-2 * pi * i * fractFactor);
+            compSum += timeSignal[nIdx] * exp(-2 * pi * j * fractFactor);
         }
         dftResult[tid] = compSum;
     }
@@ -43,13 +43,15 @@ complex<double>* dft::iterative(double *timeSignal, unsigned long sigLength)
     
     // auto start = chrono::high_resolution_clock::now();
 
+    complex<double> j(0.0, 1.0);
+
     for (int kIdx = 0; kIdx < sigLength; kIdx++)
     {
         complex<double> compSum = 0;
         for (int nIdx = 0; nIdx < sigLength; nIdx++)
         {
             double fractFactor = (double) (nIdx * kIdx) / (double) sigLength;
-            compSum += timeSignal[nIdx] * exp(-2 * pi * 1i * fractFactor);
+            compSum += timeSignal[nIdx] * exp(-2 * pi * j * fractFactor);
         }
         dftResult[kIdx] = compSum;
         // cout << compSum << endl;
@@ -144,6 +146,8 @@ complex<double>* dft::ompParallel(double *timeSignal, unsigned long sigLength)
     int numThreads = omp_get_max_threads() - 1;
     
     // auto start = chrono::high_resolution_clock::now();
+
+    complex<double> j(0.0, 1.0);
     
     #pragma omp parallel for num_threads(numThreads)
     for (int kIdx = 0; kIdx < sigLength; kIdx++)
@@ -152,7 +156,7 @@ complex<double>* dft::ompParallel(double *timeSignal, unsigned long sigLength)
         for (int nIdx = 0; nIdx < sigLength; nIdx++)
         {
             double fractFactor = (double) (nIdx * kIdx) / (double) sigLength;
-            compSum += timeSignal[nIdx] * exp(-2 * pi * 1i * fractFactor);
+            compSum += timeSignal[nIdx] * exp(-2 * pi * j * fractFactor);
         }
         dftResult[kIdx] = compSum;
     }

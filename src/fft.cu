@@ -38,7 +38,7 @@ __global__ void binEx(cuda::std::complex<double> *bitShufTimeSig, unsigned long 
 
         unsigned long exchangeIdx = fft::cudaExchangeIdx(tid, roundIdx + 1);
         
-        cuda::std::complex<double> i(0.0, 1.0);
+        cuda::std::complex<double> j(0.0, 1.0);
 
         double pi = 2*acos(0.0);
 
@@ -56,7 +56,7 @@ __global__ void binEx(cuda::std::complex<double> *bitShufTimeSig, unsigned long 
         // if (tid == sigLength - 1)
         //     printf("factorAngle %f\n", -((double) factorIdx / numSampsPerBlock));
         // double factorAngle = -pi * ((double) factorIdx / numSampsPerBlock);
-        cuda::std::complex<double> compFactor = exp(-pi * i * ((double) factorIdx / numSampsPerBlock));
+        cuda::std::complex<double> compFactor = exp(-pi * j * ((double) factorIdx / numSampsPerBlock));
         // cuda::std::complex<double> compFactor(cos(factorAngle), sin(factorAngle));
 
         // if (tid == sigLength - 1)
@@ -191,6 +191,8 @@ complex<double>* fft::iterative(double *timeSignal, unsigned long sigLength)
     
     // auto start = chrono::high_resolution_clock::now();
 
+    complex<double> j(0.0, 1.0);
+
     for (int roundIdx = 0; roundIdx < numRounds; roundIdx++)
     {
         int numSampsPerBlock = 1 << roundIdx;
@@ -198,9 +200,9 @@ complex<double>* fft::iterative(double *timeSignal, unsigned long sigLength)
         for (int factIdx = 0; factIdx < numSampsPerBlock; factIdx++)
         {
             // Array of complex factors for FFT
-            // Paper uses Matlab and has a -2 * pi * 1i factor but that does not work in this implementation
-            // -pi * 1i is the correct implementation when numSampsPerBlock is 2^roundIdx and roundIdx is from 0 to log2 sigLength - 1
-            compFactors[factIdx] = exp(-pi * 1i * ((double) factIdx / numSampsPerBlock));
+            // Paper uses Matlab and has a -2 * pi * i factor but that does not work in this implementation
+            // -pi * i is the correct implementation when numSampsPerBlock is 2^roundIdx and roundIdx is from 0 to log2 sigLength - 1
+            compFactors[factIdx] = exp(-pi * j * ((double) factIdx / numSampsPerBlock));
         }
 
         int numBlocksPerRound = 1 << (numRounds - roundIdx - 1);
@@ -357,6 +359,8 @@ complex<double>* fft::ompParallel(double *timeSignal, unsigned long sigLength)
     
     // auto start = chrono::high_resolution_clock::now();
 
+    complex<double> j(0.0, 1.0);
+
     for (int roundIdx = 0; roundIdx < numRounds; roundIdx++)
     {
         int numSampsPerBlock = 1 << roundIdx;
@@ -364,9 +368,9 @@ complex<double>* fft::ompParallel(double *timeSignal, unsigned long sigLength)
         for (int factIdx = 0; factIdx < numSampsPerBlock; factIdx++)
         {
             // Array of complex factors for FFT
-            // Paper uses Matlab and has a -2 * pi * 1i factor but that does not work in this implementation
-            // -pi * 1i is the correct implementation when numSampsPerBlock is 2^roundIdx and roundIdx is from 0 to log2 sigLength - 1
-            compFactors[factIdx] = exp(-pi * 1i * ((double) factIdx / numSampsPerBlock));
+            // Paper uses Matlab and has a -2 * pi * i factor but that does not work in this implementation
+            // -pi * i is the correct implementation when numSampsPerBlock is 2^roundIdx and roundIdx is from 0 to log2 sigLength - 1
+            compFactors[factIdx] = exp(-pi * j * ((double) factIdx / numSampsPerBlock));
         }
 
         int numBlocksPerRound = 1 << (numRounds - roundIdx - 1);

@@ -13,7 +13,8 @@
 #include <bits/stdc++.h>
 #include <cmath>
 #include "omp.h"
-#include <functional>
+#include <string>
+#include <fstream>
 
 using namespace std;
 
@@ -29,8 +30,11 @@ class fourierAlgorithms
 
         using algoMethod = complex<double>* (fourierAlgorithms::*)(double*, unsigned long);
 
-        // complex<double>* timeAlgorithm(double *timeSignal, unsigned long sigLength, function<complex<double>*(double*, unsigned long)> algo);
-        virtual complex<double>* timeAlgorithm(double *timeSignal, unsigned long sigLength, algoMethod algo);
+        complex<double>* timeAlgorithm(double *timeSignal, unsigned long sigLength, algoMethod algo);
+
+        complex<double>* saveAlgorithmResult(string fileName, double *timeSignal, unsigned long sigLength, algoMethod algo);
+
+        complex<double>* plotAlgorithmResult(double samplingFreq, char *plotTitle, double *timeSignal, unsigned long sigLength, algoMethod algo);
 
         static unsigned long zeroPadLength(double *timeSignal, unsigned long sigLength, unsigned long numZeros);
         static double* zeroPadArray(double *timeSignal, unsigned long sigLength, unsigned long numZeros);
