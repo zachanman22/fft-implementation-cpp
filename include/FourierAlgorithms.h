@@ -18,7 +18,7 @@
 
 using namespace std;
 
-class fourierAlgorithms
+class FourierAlgorithms
 {
 
     public:
@@ -28,13 +28,11 @@ class fourierAlgorithms
 
         virtual complex<double>* ompParallel(double *timeSignal, unsigned long sigLength)=0;
 
-        using algoMethod = complex<double>* (fourierAlgorithms::*)(double*, unsigned long);
+        using algoMethod = complex<double>* (FourierAlgorithms::*)(double*, unsigned long);
 
         complex<double>* timeAlgorithm(double *timeSignal, unsigned long sigLength, algoMethod algo);
 
         complex<double>* saveAlgorithmResult(string fileName, double *timeSignal, unsigned long sigLength, algoMethod algo);
-
-        complex<double>* plotAlgorithmResult(double samplingFreq, char *plotTitle, double *timeSignal, unsigned long sigLength, algoMethod algo);
 
         static unsigned long zeroPadLength(double *timeSignal, unsigned long sigLength, unsigned long numZeros);
         static double* zeroPadArray(double *timeSignal, unsigned long sigLength, unsigned long numZeros);

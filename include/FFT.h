@@ -13,13 +13,13 @@
 #include <bits/stdc++.h>
 #include <cmath>
 #include "omp.h"
-#include "fourierAlgorithms.h"
+#include "FourierAlgorithms.h"
 
 using namespace std;
 
 __global__ void binEx(cuda::std::complex<double> *bitShufTimeSig, unsigned long sigLength, int roundIdx, int tasksPerThread, cuda::std::complex<double> *tempHold);
 
-class fft : public fourierAlgorithms
+class FFT : public FourierAlgorithms
 {
 
     public:

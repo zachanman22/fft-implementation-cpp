@@ -1,13 +1,13 @@
-#include "fft.h"
-#include "dft.h"
+#include "FFT.h"
+#include "DFT.h"
 
 int main()
 {
-    fft fftObj;
-    dft dftObj;
+    FFT fftObj;
+    DFT dftObj;
 
-    // unsigned long signalLength = 262144 * 256;
-    unsigned long signalLength = 16384;
+    unsigned long signalLength = 262144 * 256;
+    // unsigned long signalLength = 16384;
 
     double pi = 2*acos(0.0);
 
@@ -28,17 +28,13 @@ int main()
     // fftResPtrCuda = fftObj.cudaParallel(timeSignal, signalLength);
     // fftResPtrOmp = fftObj.ompParallel(timeSignal, signalLength);
 
-    // fftResPtr = fftObj.timeAlgorithm(timeSignal, signalLength, &fourierAlgorithms::iterative);
-    // fftResPtrCuda = fftObj.timeAlgorithm(timeSignal, signalLength, &fourierAlgorithms::cudaParallel);
-    // fftResPtrOmp = fftObj.timeAlgorithm(timeSignal, signalLength, &fourierAlgorithms::ompParallel);
+    fftResPtr = fftObj.timeAlgorithm(timeSignal, signalLength, &FourierAlgorithms::iterative);
+    fftResPtrCuda = fftObj.timeAlgorithm(timeSignal, signalLength, &FourierAlgorithms::cudaParallel);
+    fftResPtrOmp = fftObj.timeAlgorithm(timeSignal, signalLength, &FourierAlgorithms::ompParallel);
 
-    // fftResPtr = fftObj.saveAlgorithmResult("iterativeFFT.csv", timeSignal, signalLength, &fourierAlgorithms::iterative);
-    // fftResPtrCuda = fftObj.saveAlgorithmResult("parallelCudaFFT.csv", timeSignal, signalLength, &fourierAlgorithms::cudaParallel);
-    // fftResPtrOmp = fftObj.saveAlgorithmResult("parallelOmpFFT.csv", timeSignal, signalLength, &fourierAlgorithms::ompParallel);
-
-    fftResPtr = fftObj.plotAlgorithmResult(10, "iterativeFFT", timeSignal, signalLength, &fourierAlgorithms::iterative);
-    fftResPtrCuda = fftObj.plotAlgorithmResult(10, "parallelCudaFFT", timeSignal, signalLength, &fourierAlgorithms::cudaParallel);
-    fftResPtrOmp = fftObj.plotAlgorithmResult(10, "parallelOmpFFT", timeSignal, signalLength, &fourierAlgorithms::ompParallel);
+    // fftResPtr = fftObj.saveAlgorithmResult("iterativeFFT.csv", timeSignal, signalLength, &FourierAlgorithms::iterative);
+    // fftResPtrCuda = fftObj.saveAlgorithmResult("parallelCudaFFT.csv", timeSignal, signalLength, &FourierAlgorithms::cudaParallel);
+    // fftResPtrOmp = fftObj.saveAlgorithmResult("parallelOmpFFT.csv", timeSignal, signalLength, &FourierAlgorithms::ompParallel);
 
     // for (int i = 0; i < 100; i++)
     // {
@@ -53,17 +49,13 @@ int main()
     // dftResPtrCuda = dftObj.cudaParallel(timeSignal, signalLength);
     // dftResPtrOmp = dftObj.ompParallel(timeSignal, signalLength);
 
-    // dftResPtr = dftObj.timeAlgorithm(timeSignal, signalLength, &fourierAlgorithms::iterative);
-    // dftResPtrCuda = dftObj.timeAlgorithm(timeSignal, signalLength, &fourierAlgorithms::cudaParallel);
-    // dftResPtrOmp = dftObj.timeAlgorithm(timeSignal, signalLength, &fourierAlgorithms::ompParallel);
+    // dftResPtr = dftObj.timeAlgorithm(timeSignal, signalLength, &FourierAlgorithms::iterative);
+    dftResPtrCuda = dftObj.timeAlgorithm(timeSignal, signalLength, &FourierAlgorithms::cudaParallel);
+    // dftResPtrOmp = dftObj.timeAlgorithm(timeSignal, signalLength, &FourierAlgorithms::ompParallel);
 
-    // dftResPtr = dftObj.saveAlgorithmResult("iterativeDFT.csv", timeSignal, signalLength, &fourierAlgorithms::iterative);
-    // dftResPtrCuda = dftObj.saveAlgorithmResult("parallelCudaDFT.csv", timeSignal, signalLength, &fourierAlgorithms::cudaParallel);
-    // dftResPtrOmp = dftObj.saveAlgorithmResult("parallelOmpDFT.csv", timeSignal, signalLength, &fourierAlgorithms::ompParallel);
-
-    // dftResPtr = dftObj.plotAlgorithmResult(10, "iterativeDFT", timeSignal, signalLength, &fourierAlgorithms::iterative);
-    dftResPtrCuda = dftObj.plotAlgorithmResult(10, "parallelCudaDFT", timeSignal, signalLength, &fourierAlgorithms::cudaParallel);
-    dftResPtrOmp = dftObj.plotAlgorithmResult(10, "parallelOmpDFT", timeSignal, signalLength, &fourierAlgorithms::ompParallel);
+    // dftResPtr = dftObj.saveAlgorithmResult("iterativeDFT.csv", timeSignal, signalLength, &FourierAlgorithms::iterative);
+    // dftResPtrCuda = dftObj.saveAlgorithmResult("parallelCudaDFT.csv", timeSignal, signalLength, &FourierAlgorithms::cudaParallel);
+    // dftResPtrOmp = dftObj.saveAlgorithmResult("parallelOmpDFT.csv", timeSignal, signalLength, &FourierAlgorithms::ompParallel);
 
     // for (int i = 0; i < 100; i++)
     // {
@@ -72,6 +64,6 @@ int main()
 
     for (int i = 0; i < 100; i++)
     {
-        cout << fftResPtr[i] << " " << fftResPtrCuda[i] << " " << fftResPtrOmp[i] << " " << dftResPtrCuda[i] << " " << dftResPtrOmp[i] << endl;
+        cout << fftResPtr[i] << " " << fftResPtrCuda[i] << " " << fftResPtrOmp[i] << " " << dftResPtrCuda[i] << endl;
     }
 }

@@ -13,13 +13,13 @@
 #include <bits/stdc++.h>
 #include <cmath>
 #include "omp.h"
-#include "fourierAlgorithms.h"
+#include "FourierAlgorithms.h"
 
 using namespace std;
 
 __global__ void dftCuda(cuda::std::complex<double> *dftResult, unsigned long sigLength, double *timeSignal);
 
-class dft : public fourierAlgorithms
+class DFT : public FourierAlgorithms
 {
 
     public:

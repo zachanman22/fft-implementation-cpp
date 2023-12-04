@@ -1,23 +1,29 @@
-#include "dft.h"
+#include "DFT.h"
 
 using namespace std;
 
+/*
+Description: kernel for the parallel dft computation using CUDA
+Parameters:
+    dftResult - pointer array to the dft result
+    sigLength - length of the time signal pointer array
+    timeSignal - time signal to be analyzed
+    tasksPerThread - number of round coefficients that each thread must compute
+*/
 __global__ void dftKernel(cuda::std::complex<double> *dftResult, unsigned long sigLength, double *timeSignal, int tasksPerThread)
 {
     auto group = cooperative_groups::this_grid();
     auto block = cooperative_groups::this_thread_block();
 
-    // printf("group %d", group.thread_rank());
-
     int threadId = blockIdx.x * blockDim.x + threadIdx.x;
-    // unsigned long tid = group.thread_rank();
-    // printf("tid %d\n", tid);
-    // cuda::std::complex<double>* holding = (cuda::std::complex<double>*) malloc(tasksPerThread * sizeof(cuda::std::complex<double>));
 
+    // Complex j
     cuda::std::complex<double> j(0.0, 1.0);
 
+    // Pi
     double pi = 2*acos(0.0);
 
+    // Based on threadId and number of tasks per thread, loop through the computations each thread must do
     for (int tid = tasksPerThread * threadId; tid < tasksPerThread * threadId + tasksPerThread; tid++)
     {
         cuda::std::complex<double> compSum = 0;
@@ -30,21 +36,28 @@ __global__ void dftKernel(cuda::std::complex<double> *dftResult, unsigned long s
     }
 }
 
-// https://pages.di.unipi.it/gemignani/woerner.pdf
-complex<double>* dft::iterative(double *timeSignal, unsigned long sigLength)
+/*
+Description: performs iterative dft using double for loop
+Parameters:
+    timeSignal - pointer array to the time signal to be analyzed
+    sigLength - length of the time signal pointer array
+Return:
+    dftResult - complex double array pointer that is the result of the fourier algorithm in correct order
+*/
+complex<double>* DFT::iterative(double *timeSignal, unsigned long sigLength)
 {
     cout << "Running Iterative DFT" << endl;
 
+    // Pi
     double pi = 2*acos(0.0);
 
-    int numRounds = (int) log2(sigLength);
-
-    complex<double>* dftResult = (complex<double>*) malloc(sigLength * sizeof(complex<double>));
-    
-    // auto start = chrono::high_resolution_clock::now();
-
+    // Complex j
     complex<double> j(0.0, 1.0);
 
+    // Allocate space for the dft result
+    complex<double>* dftResult = (complex<double>*) malloc(sigLength * sizeof(complex<double>));
+
+    // Double for loop for dft computation
     for (int kIdx = 0; kIdx < sigLength; kIdx++)
     {
         complex<double> compSum = 0;
@@ -54,28 +67,33 @@ complex<double>* dft::iterative(double *timeSignal, unsigned long sigLength)
             compSum += timeSignal[nIdx] * exp(-2 * pi * j * fractFactor);
         }
         dftResult[kIdx] = compSum;
-        // cout << compSum << endl;
     }
-
-
-    // auto stop = chrono::high_resolution_clock::now();
-    // auto diff = chrono::duration_cast<chrono::microseconds>(stop - start);
-    // cout << "iterative algo time (us): " << diff.count() << endl;
 
     return dftResult;
 
 }
 
-// Binary Exchange algorithm for parallel FFT
-complex<double>* dft::cudaParallel(double *timeSignal, unsigned long sigLength)
+/*
+Description: performs parallel dft using CUDA
+Parameters:
+    timeSignal - pointer array to the time signal to be analyzed
+    sigLength - length of the time signal pointer array
+Return:
+    dftResult - complex double array pointer that is the result of the fourier algorithm in correct order
+*/
+complex<double>* DFT::cudaParallel(double *timeSignal, unsigned long sigLength)
 {
     cout << "Running CUDA Parallelized DFT" << endl;
 
+    // Allocate space for the dft result
     complex<double>* dftResult = (complex<double>*) malloc(sigLength * sizeof(complex<double>));
 
+    // CUDA parameter preprocessing to prevent errors
     int threadsPerBlock;
     int numBlocks;
     int tasksPerThread;
+
+    // Spawn only 1 block if the signal length is less than 1024
     if (sigLength <= 1024)
     {
         threadsPerBlock = sigLength;
@@ -96,38 +114,31 @@ complex<double>* dft::cudaParallel(double *timeSignal, unsigned long sigLength)
         tasksPerThread = (int) ceil(sigLength / (1024.0 * 64.0));
     }
 
-    double pi = 2*acos(0.0);
-
+    // Pointers for CUDA arrays
     cuda::std::complex<double>* d_dftResult;
     double* d_timeSignal;
 
+    // Allocate space on GPU for CUDA arrays
     cudaMalloc((void**) &d_dftResult, sizeof(cuda::std::complex<double>) * (int) sigLength);
     cudaMalloc((void**) &d_timeSignal, sizeof(double) * (int) sigLength);
 
+    // Initialize the values of the CUDA arrays
     cudaMemcpy(d_timeSignal, timeSignal, sizeof(double) * sigLength, cudaMemcpyHostToDevice);
 
-    // auto start = chrono::high_resolution_clock::now();
-
-    // cout << "round " << roundIdx << endl;
-
+    // Kernel arguments
     void *kernelArgs[] = { &d_dftResult, &sigLength, &d_timeSignal, &tasksPerThread};
-    // int dev = 0;
-    // cudaDeviceProp deviceProp;
-    // cudaGetDeviceProperties(&deviceProp, dev);
-    // initialize, then launch
 
+    // Set block and grid sizes
     dim3 dimBlock(threadsPerBlock, 1, 1);
     dim3 dimGrid(numBlocks, 1, 1);
+
+    // Launch the kernel
     cudaLaunchCooperativeKernel((void*)dftKernel, dimGrid, dimBlock, kernelArgs);
-    // cudaDeviceSynchronize();
-    // binEx<<<1, sigLength>>>(d_bitShufTimeSig, sigLength, roundIdx, tasksPerThread, d_tempHold);
-    
-    // auto stop = chrono::high_resolution_clock::now();
-    // auto diff = chrono::duration_cast<chrono::microseconds>(stop - start);
 
-    // cout << "parallel algo time (us): " << diff.count() << endl;
-
+    // Copy the CUDA array result to the CPU array
     cudaMemcpy(dftResult, d_dftResult, sizeof(cuda::std::complex<double>) * sigLength, cudaMemcpyDeviceToHost);
+
+    // Free the CUDA array memory
     cudaFree(d_dftResult);
     cudaFree(d_timeSignal);
 
@@ -135,20 +146,31 @@ complex<double>* dft::cudaParallel(double *timeSignal, unsigned long sigLength)
 
 }
 
-complex<double>* dft::ompParallel(double *timeSignal, unsigned long sigLength)
+/*
+Description: performs parallel dft using OpenMP
+Parameters:
+    timeSignal - pointer array to the time signal to be analyzed
+    sigLength - length of the time signal pointer array
+Return:
+    dftResult - complex double array pointer that is the result of the fourier algorithm in correct order
+*/
+complex<double>* DFT::ompParallel(double *timeSignal, unsigned long sigLength)
 {
     cout << "Running OMP Parallelized DFT" << endl;
 
+    // Allocate space for the dft result
     complex<double>* dftResult = (complex<double>*) malloc(sigLength * sizeof(complex<double>));
 
+    // Pi
     double pi = 2*acos(0.0);
 
+    // Complex j
+    complex<double> j(0.0, 1.0);
+
+    // Use the total number of threads minus 1 (for the main thread)
     int numThreads = omp_get_max_threads() - 1;
     
-    // auto start = chrono::high_resolution_clock::now();
-
-    complex<double> j(0.0, 1.0);
-    
+    // Process the outer loop of the double for loop using OpenMP threads
     #pragma omp parallel for num_threads(numThreads)
     for (int kIdx = 0; kIdx < sigLength; kIdx++)
     {
@@ -160,10 +182,6 @@ complex<double>* dft::ompParallel(double *timeSignal, unsigned long sigLength)
         }
         dftResult[kIdx] = compSum;
     }
-
-    // auto stop = chrono::high_resolution_clock::now();
-    // auto diff = chrono::duration_cast<chrono::microseconds>(stop - start);
-    // cout << "omp algo time (us): " << diff.count() << endl;
 
     return dftResult;
 
