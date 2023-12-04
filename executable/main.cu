@@ -6,8 +6,8 @@ int main()
     FFT fftObj;
     DFT dftObj;
 
-    unsigned long signalLength = 262144 * 256;
-    // unsigned long signalLength = 16384;
+    // unsigned long signalLength = 262144 * 512;
+    unsigned long signalLength = 16384 / 2;
 
     double pi = 2*acos(0.0);
 
@@ -49,9 +49,9 @@ int main()
     // dftResPtrCuda = dftObj.cudaParallel(timeSignal, signalLength);
     // dftResPtrOmp = dftObj.ompParallel(timeSignal, signalLength);
 
-    // dftResPtr = dftObj.timeAlgorithm(timeSignal, signalLength, &FourierAlgorithms::iterative);
+    dftResPtr = dftObj.timeAlgorithm(timeSignal, signalLength, &FourierAlgorithms::iterative);
     dftResPtrCuda = dftObj.timeAlgorithm(timeSignal, signalLength, &FourierAlgorithms::cudaParallel);
-    // dftResPtrOmp = dftObj.timeAlgorithm(timeSignal, signalLength, &FourierAlgorithms::ompParallel);
+    dftResPtrOmp = dftObj.timeAlgorithm(timeSignal, signalLength, &FourierAlgorithms::ompParallel);
 
     // dftResPtr = dftObj.saveAlgorithmResult("iterativeDFT.csv", timeSignal, signalLength, &FourierAlgorithms::iterative);
     // dftResPtrCuda = dftObj.saveAlgorithmResult("parallelCudaDFT.csv", timeSignal, signalLength, &FourierAlgorithms::cudaParallel);
@@ -64,6 +64,6 @@ int main()
 
     for (int i = 0; i < 100; i++)
     {
-        cout << fftResPtr[i] << " " << fftResPtrCuda[i] << " " << fftResPtrOmp[i] << " " << dftResPtrCuda[i] << endl;
+        cout << fftResPtr[i] << " " << fftResPtrCuda[i] << " " << fftResPtrOmp[i] << " " << dftResPtr[i] << " " << dftResPtrCuda[i] << " " << dftResPtrOmp[i] << endl;
     }
 }
