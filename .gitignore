@@ -7,3 +7,5 @@
 *.out
 *.csv
 build
+fft_test.cu
+fftTest.py
